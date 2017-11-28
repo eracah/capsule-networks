@@ -9,7 +9,20 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 import numpy as np
+from subprocess import Popen, PIPE
 
+def check_for_gpus():
+    try:
+        p = Popen(["nvidia-smi"],stdout=PIPE)
+        cuda=True
+    except:
+        cuda=False
+    return cuda
+
+
+
+
+CUDA = check_for_gpus()
 BATCH_SIZE = 100
 NUM_CLASSES = 10
 NUM_EPOCHS = 500
@@ -62,7 +75,9 @@ class CapsuleLayer(nn.Module):
         if self.num_route_nodes != -1:
             priors = x[None, :, :, None, :] @ self.route_weights[:, None, :, :, :]
 
-            logits = Variable(torch.zeros(*priors.size())).cuda()
+            logits = Variable(torch.zeros(*priors.size()))
+            if CUDA:
+                logits = logits.cuda()
             for i in range(self.num_iterations):
                 probs = softmax(logits, dim=2)
                 outputs = self.squash((probs * priors).sum(dim=2, keepdim=True))
@@ -108,7 +123,10 @@ class CapsuleNet(nn.Module):
         if y is None:
             # In all batches, get the most active capsule.
             _, max_length_indices = classes.max(dim=1)
-            y = Variable(torch.sparse.torch.eye(NUM_CLASSES)).cuda().index_select(dim=0, index=max_length_indices.data)
+            if CUDA:
+                y = Variable(torch.sparse.torch.eye(NUM_CLASSES)).cuda().index_select(dim=0, index=max_length_indices.data)
+            else:
+                y = Variable(torch.sparse.torch.eye(NUM_CLASSES)).index_select(dim=0, index=max_length_indices.data)
 
         reconstructions = self.decoder((x * y[:, :, None]).view(x.size(0), -1))
 
@@ -144,7 +162,8 @@ if __name__ == "__main__":
 
     model = CapsuleNet()
     # model.load_state_dict(torch.load('epochs/epoch_327.pt'))
-    model.cuda()
+    if CUDA:
+        model.cuda()
 
     print("# parameters:", sum(param.numel() for param in model.parameters()))
 
@@ -184,9 +203,13 @@ if __name__ == "__main__":
         labels = torch.LongTensor(labels)
 
         labels = torch.sparse.torch.eye(NUM_CLASSES).index_select(dim=0, index=labels)
+        data = Variable(data)#.cuda()
+        labels = Variable(labels)#.cuda()
 
-        data = Variable(data).cuda()
-        labels = Variable(labels).cuda()
+        if CUDA:
+            data = data.cuda()
+            labels = labels.cuda()
+
 
         if training:
             classes, reconstructions = model(data, labels)
@@ -243,7 +266,11 @@ if __name__ == "__main__":
         test_sample = next(iter(get_iterator(False)))
 
         ground_truth = (test_sample[0].unsqueeze(1).float() / 255.0)
-        _, reconstructions = model(Variable(ground_truth).cuda())
+        if CUDA:
+            _, reconstructions = model(Variable(ground_truth).cuda())
+        else:
+            _, reconstructions = model(Variable(ground_truth))
+
         reconstruction = reconstructions.cpu().view_as(ground_truth).data
 
         ground_truth_logger.log(
