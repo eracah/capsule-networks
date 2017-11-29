@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from torch import nn
 import numpy as np
 from subprocess import Popen, PIPE
-
+from tensorboardX import SummaryWriter
 def check_for_gpus():
     try:
         p = Popen(["nvidia-smi"],stdout=PIPE)
@@ -154,11 +154,12 @@ if __name__ == "__main__":
     from torch.autograd import Variable
     from torch.optim import Adam
     from torchnet.engine import Engine
-    from torchnet.logger import VisdomPlotLogger, VisdomLogger
     from torchvision.utils import make_grid
     from torchvision.datasets.mnist import MNIST
     from tqdm import tqdm
     import torchnet as tnt
+
+    writer = SummaryWriter('./.logs/{0}'.format("./"))
 
     model = CapsuleNet()
     # model.load_state_dict(torch.load('epochs/epoch_327.pt'))
@@ -173,16 +174,6 @@ if __name__ == "__main__":
     meter_loss = tnt.meter.AverageValueMeter()
     meter_accuracy = tnt.meter.ClassErrorMeter(accuracy=True)
     confusion_meter = tnt.meter.ConfusionMeter(NUM_CLASSES, normalized=True)
-
-    train_loss_logger = VisdomPlotLogger('line', opts={'title': 'Train Loss'})
-    train_error_logger = VisdomPlotLogger('line', opts={'title': 'Train Accuracy'})
-    test_loss_logger = VisdomPlotLogger('line', opts={'title': 'Test Loss'})
-    test_accuracy_logger = VisdomPlotLogger('line', opts={'title': 'Test Accuracy'})
-    confusion_logger = VisdomLogger('heatmap', opts={'title': 'Confusion matrix',
-                                                     'columnnames': list(range(NUM_CLASSES)),
-                                                     'rownames': list(range(NUM_CLASSES))})
-    ground_truth_logger = VisdomLogger('image', opts={'title': 'Ground Truth'})
-    reconstruction_logger = VisdomLogger('image', opts={'title': 'Reconstruction'})
 
     capsule_loss = CapsuleLoss()
 
@@ -235,6 +226,7 @@ if __name__ == "__main__":
         meter_accuracy.add(state['output'].data, torch.LongTensor(state['sample'][1]))
         confusion_meter.add(state['output'].data, torch.LongTensor(state['sample'][1]))
         meter_loss.add(state['loss'].data[0])
+        #writer.add_scalar(("train" if state["train"] else "val") + "_iteration_loss",state['loss'].data[0], state["t"] )
 
 
     def on_start_epoch(state):
@@ -246,15 +238,16 @@ if __name__ == "__main__":
         print('[Epoch %d] Training Loss: %.4f (Accuracy: %.2f%%)' % (
             state['epoch'], meter_loss.value()[0], meter_accuracy.value()[0]))
 
-        train_loss_logger.log(state['epoch'], meter_loss.value()[0])
-        train_error_logger.log(state['epoch'], meter_accuracy.value()[0])
+        writer.add_scalar('train/loss', meter_loss.value()[0], state['epoch'])
+        writer.add_scalar('train/accuracy', meter_accuracy.value()[0], state['epoch'])
+
 
         reset_meters()
 
         engine.test(processor, get_iterator(False))
-        test_loss_logger.log(state['epoch'], meter_loss.value()[0])
-        test_accuracy_logger.log(state['epoch'], meter_accuracy.value()[0])
-        confusion_logger.log(confusion_meter.value())
+        writer.add_scalar('val/loss', meter_loss.value()[0], state['epoch'])
+        writer.add_scalar('val/accuracy', meter_accuracy.value()[0], state['epoch'])
+        writer.add_image('val/confusion',confusion_meter.value(),state['epoch'])
 
         print('[Epoch %d] Testing Loss: %.4f (Accuracy: %.2f%%)' % (
             state['epoch'], meter_loss.value()[0], meter_accuracy.value()[0]))
@@ -273,10 +266,9 @@ if __name__ == "__main__":
 
         reconstruction = reconstructions.cpu().view_as(ground_truth).data
 
-        ground_truth_logger.log(
-            make_grid(ground_truth, nrow=int(BATCH_SIZE ** 0.5), normalize=True, range=(0, 1)).numpy())
-        reconstruction_logger.log(
-            make_grid(reconstruction, nrow=int(BATCH_SIZE ** 0.5), normalize=True, range=(0, 1)).numpy())
+        writer.add_image("val/ground_truth", make_grid(ground_truth, nrow=int(BATCH_SIZE ** 0.5),
+                        normalize=True, range=(0, 1)).numpy(), state["epoch"])
+        writer.add_image("val/reconstructions",make_grid(reconstruction, nrow=int(BATCH_SIZE ** 0.5), normalize=True, range=(0, 1)).numpy(),state["epoch"])
 
     # def on_start(state):
     #     state['epoch'] = 327
