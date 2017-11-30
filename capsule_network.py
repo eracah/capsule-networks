@@ -266,9 +266,9 @@ if __name__ == "__main__":
 
         reconstruction = reconstructions.cpu().view_as(ground_truth).data
 
-        writer.add_image("val/ground_truth", make_grid(ground_truth, nrow=int(BATCH_SIZE ** 0.5),
-                        normalize=True, range=(0, 1)).numpy(), state["epoch"])
-        writer.add_image("val/reconstructions",make_grid(reconstruction, nrow=int(BATCH_SIZE ** 0.5), normalize=True, range=(0, 1)).numpy(),state["epoch"])
+        #writer.add_image("val/ground_truth", make_grid(ground_truth, nrow=int(BATCH_SIZE ** 0.5),
+        #                normalize=True, range=(0, 1)).numpy(), state["epoch"])
+        #writer.add_image("val/reconstructions",make_grid(reconstruction, nrow=int(BATCH_SIZE ** 0.5), normalize=True, range=(0, 1)).numpy(),state["epoch"])
 
     # def on_start(state):
     #     state['epoch'] = 327
