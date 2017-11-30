@@ -247,7 +247,7 @@ if __name__ == "__main__":
         engine.test(processor, get_iterator(False))
         writer.add_scalar('val/loss', meter_loss.value()[0], state['epoch'])
         writer.add_scalar('val/accuracy', meter_accuracy.value()[0], state['epoch'])
-        writer.add_image('val/confusion',confusion_meter.value(),state['epoch'])
+        #writer.add_image('val/confusion',confusion_meter.value(),state['epoch'])
 
         print('[Epoch %d] Testing Loss: %.4f (Accuracy: %.2f%%)' % (
             state['epoch'], meter_loss.value()[0], meter_accuracy.value()[0]))
