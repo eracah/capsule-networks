@@ -11,6 +11,14 @@ from torch import nn
 import numpy as np
 from subprocess import Popen, PIPE
 from tensorboardX import SummaryWriter
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--dataset",type=str,default="mnist")
+args = parser.parse_args()
+
+
+
 def check_for_gpus():
     try:
         p = Popen(["nvidia-smi"],stdout=PIPE)
@@ -156,6 +164,8 @@ if __name__ == "__main__":
     from torchnet.engine import Engine
     from torchvision.utils import make_grid
     from torchvision.datasets.mnist import MNIST
+    from torchvision.datasets.cifar import CIFAR10
+    import torchvision.transforms as transforms
     from tqdm import tqdm
     import torchnet as tnt
 
@@ -179,7 +189,13 @@ if __name__ == "__main__":
 
 
     def get_iterator(mode):
-        dataset = MNIST(root='./data', download=True, train=mode)
+
+        if args.dataset == "mnist"
+            dataset = MNIST(root='./data', download=True, train=mode)
+        elif args.dataset == "cifar":
+            transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+            dataset = CIFAR10(root="./data",download=True,train=mode, transform=transform)
+
         data = getattr(dataset, 'train_data' if mode else 'test_data')
         labels = getattr(dataset, 'train_labels' if mode else 'test_labels')
         tensor_dataset = tnt.dataset.TensorDataset([data, labels])
