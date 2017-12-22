@@ -15,6 +15,7 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dataset",type=str,default="mnist")
+parser.add_argument("--logname",type=str,default="")
 args = parser.parse_args()
 
 
@@ -37,13 +38,8 @@ NUM_EPOCHS = 500
 NUM_ROUTING_ITERATIONS = 3
 
 
-def softmax(input, dim=1):
-    transposed_input = input.transpose(dim, len(input.size()) - 1)
-    softmaxed_output = F.softmax(transposed_input.contiguous().view(-1, transposed_input.size(-1)))
-    return softmaxed_output.view(*transposed_input.size()).transpose(dim, len(input.size()) - 1)
-
-
 def augmentation(x, max_shift=2):
+
     _, _, height, width = x.size()
 
     h_shift, w_shift = np.random.randint(-max_shift, max_shift + 1, size=2)
@@ -84,15 +80,22 @@ class CapsuleLayer(nn.Module):
             priors = x[None, :, :, None, :] @ self.route_weights[:, None, :, :, :]
 
             logits = Variable(torch.zeros(*priors.size()))
+
             if CUDA:
                 logits = logits.cuda()
             for i in range(self.num_iterations):
-                probs = softmax(logits, dim=2)
+                probs = F.softmax(logits, dim=2)
                 outputs = self.squash((probs * priors).sum(dim=2, keepdim=True))
 
                 if i != self.num_iterations - 1:
                     delta_logits = (priors * outputs).sum(dim=-1, keepdim=True)
                     logits = logits + delta_logits
+                    # print(x.shape)
+                    # print(self.route_weights.shape)
+                    # print(priors.shape)
+                    # print(logits.shape)
+                    # print(probs.shape)
+                    # print(outputs.shape)
         else:
             outputs = [capsule(x).view(x.size(0), -1, 1) for capsule in self.capsules]
             outputs = torch.cat(outputs, dim=-1)
@@ -126,15 +129,15 @@ class CapsuleNet(nn.Module):
         x = self.digit_capsules(x).squeeze().transpose(0, 1)
 
         classes = (x ** 2).sum(dim=-1) ** 0.5
-        classes = F.softmax(classes)
+        classes = F.softmax(classes,dim=1)
 
         if y is None:
             # In all batches, get the most active capsule.
             _, max_length_indices = classes.max(dim=1)
             if CUDA:
-                y = Variable(torch.sparse.torch.eye(NUM_CLASSES)).cuda().index_select(dim=0, index=max_length_indices.data)
+                y = Variable(torch.sparse.torch.eye(NUM_CLASSES)).cuda().index_select(dim=0, index=max_length_indices)
             else:
-                y = Variable(torch.sparse.torch.eye(NUM_CLASSES)).index_select(dim=0, index=max_length_indices.data)
+                y = Variable(torch.sparse.torch.eye(NUM_CLASSES)).index_select(dim=0, index=max_length_indices)
 
         reconstructions = self.decoder((x * y[:, :, None]).view(x.size(0), -1))
 
@@ -169,7 +172,7 @@ if __name__ == "__main__":
     from tqdm import tqdm
     import torchnet as tnt
 
-    writer = SummaryWriter('./.logs/{0}'.format("./"))
+    writer = SummaryWriter('./.logs/{0}'.format(args.logname))
 
     model = CapsuleNet()
     # model.load_state_dict(torch.load('epochs/epoch_327.pt'))
@@ -190,25 +193,22 @@ if __name__ == "__main__":
 
     def get_iterator(mode):
 
-        if args.dataset == "mnist"
-            dataset = MNIST(root='./data', download=True, train=mode)
+        if args.dataset == "mnist":
+            transform=transforms.Compose([
+                    transforms.ToTensor(),
+                    transforms.Normalize((0.5,), (0.5,))])
+            dataset = MNIST(root='./data', download=True, train=mode,transform=transform)
         elif args.dataset == "cifar":
             transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-            dataset = CIFAR10(root="./data",download=True,train=mode, transform=transform)
+            dataset = CIFAR10(root="/data/lisa/data/cifar10",download=False,train=mode, transform=transform)
 
-        data = getattr(dataset, 'train_data' if mode else 'test_data')
-        labels = getattr(dataset, 'train_labels' if mode else 'test_labels')
-        tensor_dataset = tnt.dataset.TensorDataset([data, labels])
-
-        return tensor_dataset.parallel(batch_size=BATCH_SIZE, num_workers=4, shuffle=mode)
+        return torch.utils.data.DataLoader(dataset,batch_size=BATCH_SIZE, num_workers=4, shuffle=mode)
 
 
     def processor(sample):
         data, labels, training = sample
 
-        data = augmentation(data.unsqueeze(1).float() / 255.0)
         labels = torch.LongTensor(labels)
-
         labels = torch.sparse.torch.eye(NUM_CLASSES).index_select(dim=0, index=labels)
         data = Variable(data)#.cuda()
         labels = Variable(labels)#.cuda()
@@ -274,7 +274,7 @@ if __name__ == "__main__":
 
         test_sample = next(iter(get_iterator(False)))
 
-        ground_truth = (test_sample[0].unsqueeze(1).float() / 255.0)
+        ground_truth = test_sample[0] 
         if CUDA:
             _, reconstructions = model(Variable(ground_truth).cuda())
         else:
